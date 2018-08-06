@@ -118,7 +118,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
@@ -188,8 +187,14 @@ tf_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 
@@ -227,9 +232,7 @@ tf_custom_op_library(
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
-    deps = [
-        "//tensorflow/core/kernels:eigen_helpers",
-    ],
+    deps = ["//tensorflow/core/kernels:eigen_helpers"],
 )
 
 tf_gen_op_wrapper_py(
@@ -251,9 +254,7 @@ tf_custom_op_library(
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
-    deps = [
-        "//tensorflow/core/kernels:eigen_helpers",
-    ],
+    deps = ["//tensorflow/core/kernels:eigen_helpers"],
 )
 
 tf_gen_op_wrapper_py(
@@ -321,19 +322,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "tools/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_gen_op_libs(

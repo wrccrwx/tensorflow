@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <utility>
 
-#include "grpc++/generic/generic_stub.h"
-#include "grpc++/grpc++.h"
+#include "grpcpp/generic/generic_stub.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -39,24 +39,27 @@ namespace tensorflow {
 
 class GrpcRemoteWorker : public WorkerInterface {
  public:
-  explicit GrpcRemoteWorker(GrpcCounter* live_rpc_counter,
-                            SharedGrpcChannelPtr channel,
+  explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
                             WorkerCacheLogger* logger)
-      : counter_(live_rpc_counter),
-        channel_(std::move(channel)),
+      : channel_(std::move(channel)),
         stub_(channel_),
         cq_(completion_queue),
         getstatus_(Method(GrpcWorkerMethod::kGetStatus)),
         createworkersession_(Method(GrpcWorkerMethod::kCreateWorkerSession)),
+        deleteworkersession_(Method(GrpcWorkerMethod::kDeleteWorkerSession)),
         registergraph_(Method(GrpcWorkerMethod::kRegisterGraph)),
         deregistergraph_(Method(GrpcWorkerMethod::kDeregisterGraph)),
         rungraph_(Method(GrpcWorkerMethod::kRunGraph)),
         cleanupgraph_(Method(GrpcWorkerMethod::kCleanupGraph)),
         cleanupall_(Method(GrpcWorkerMethod::kCleanupAll)),
         recvtensor_(Method(GrpcWorkerMethod::kRecvTensor)),
+        recvbuf_(Method(GrpcWorkerMethod::kRecvBuf)),
         logging_(Method(GrpcWorkerMethod::kLogging)),
         tracing_(Method(GrpcWorkerMethod::kTracing)),
+        completegroup_(Method(GrpcWorkerMethod::kCompleteGroup)),
+        instancesource_(Method(GrpcWorkerMethod::kCompleteInstance)),
+        getstepsequence_(Method(GrpcWorkerMethod::kGetStepSequence)),
         logger_(logger) {}
 
   ~GrpcRemoteWorker() override {}
@@ -71,6 +74,14 @@ class GrpcRemoteWorker : public WorkerInterface {
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override {
     IssueRequest(request, response, createworkersession_, std::move(done));
+  }
+
+  void DeleteWorkerSessionAsync(CallOptions* call_opts,
+                                const DeleteWorkerSessionRequest* request,
+                                DeleteWorkerSessionResponse* response,
+                                StatusCallback done) override {
+    IssueRequest(request, response, deleteworkersession_, std::move(done),
+                 call_opts);
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
@@ -106,6 +117,32 @@ class GrpcRemoteWorker : public WorkerInterface {
                        CleanupAllResponse* response,
                        StatusCallback done) override {
     IssueRequest(request, response, cleanupall_, std::move(done));
+  }
+
+  void RecvBufAsync(CallOptions* call_opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override {
+    IssueRequest(request, response, recvbuf_, std::move(done), call_opts);
+  }
+
+  void CompleteGroupAsync(CallOptions* call_opts,
+                          const CompleteGroupRequest* request,
+                          CompleteGroupResponse* response,
+                          StatusCallback done) override {
+    IssueRequest(request, response, completegroup_, std::move(done), call_opts);
+  }
+
+  void CompleteInstanceAsync(CallOptions* call_opts,
+                             const CompleteInstanceRequest* request,
+                             CompleteInstanceResponse* response,
+                             StatusCallback done) override {
+    IssueRequest(request, response, instancesource_, std::move(done),
+                 call_opts);
+  }
+
+  void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                            GetStepSequenceResponse* response,
+                            StatusCallback done) override {
+    IssueRequest(request, response, getstepsequence_, std::move(done));
   }
 
   void RecvTensorAsync(CallOptions* call_opts, const RecvTensorRequest* request,
@@ -182,35 +219,38 @@ class GrpcRemoteWorker : public WorkerInterface {
   void IssueRequest(const protobuf::Message* request,
                     protobuf::Message* response, const ::grpc::string& method,
                     StatusCallback done, CallOptions* call_opts = nullptr) {
-    new RPCState<protobuf::Message>(counter_, &stub_, cq_, method, *request,
-                                    response, std::move(done), call_opts);
+    new RPCState<protobuf::Message>(&stub_, cq_, method, *request, response,
+                                    std::move(done), call_opts);
   }
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
                     const ::grpc::string& method, StatusCallback done,
                     CallOptions* call_opts = nullptr) {
-    new RPCState<TensorResponse>(counter_, &stub_, cq_, method, *request,
-                                 response, std::move(done), call_opts);
+    new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
+                                 std::move(done), call_opts);
   }
 
   // Helper function for initializing the RpcMethod objects below.
   const char* Method(GrpcWorkerMethod id) { return GrpcWorkerMethodName(id); }
 
-  GrpcCounter* const counter_;
   SharedGrpcChannelPtr channel_;
   ::grpc::GenericStub stub_;
-
   ::grpc::CompletionQueue* cq_;
 
   const ::grpc::string getstatus_;
   const ::grpc::string createworkersession_;
+  const ::grpc::string deleteworkersession_;
   const ::grpc::string registergraph_;
   const ::grpc::string deregistergraph_;
   const ::grpc::string rungraph_;
   const ::grpc::string cleanupgraph_;
   const ::grpc::string cleanupall_;
   const ::grpc::string recvtensor_;
+  const ::grpc::string recvbuf_;
   const ::grpc::string logging_;
   const ::grpc::string tracing_;
+  const ::grpc::string completegroup_;
+  const ::grpc::string instancesource_;
+  const ::grpc::string getstepsequence_;
 
   // Support for logging.
   WorkerCacheLogger* logger_;
@@ -218,12 +258,10 @@ class GrpcRemoteWorker : public WorkerInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
 };
 
-WorkerInterface* NewGrpcRemoteWorker(GrpcCounter* live_rpc_counter,
-                                     SharedGrpcChannelPtr channel,
+WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      WorkerCacheLogger* logger) {
-  return new GrpcRemoteWorker(live_rpc_counter, std::move(channel),
-                              completion_queue, logger);
+  return new GrpcRemoteWorker(std::move(channel), completion_queue, logger);
 }
 
 }  // namespace tensorflow

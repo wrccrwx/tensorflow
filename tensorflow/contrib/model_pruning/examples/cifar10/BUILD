@@ -39,6 +39,7 @@ py_library(
     deps = [
         ":cifar10_input",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/model_pruning:pruning",
     ],
 )
 
@@ -50,6 +51,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar10_pruning",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -61,17 +64,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar10_pruning",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/model_pruning:pruning",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
